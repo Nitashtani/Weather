@@ -3,6 +3,9 @@ import sqlite3
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Configuration
 API_KEY = '812bb6e9e3673035e486c96700d41b36'
@@ -11,6 +14,14 @@ CITIES = ['Delhi', 'Mumbai', 'Chennai', 'Bangalore', 'Kolkata', 'Hyderabad']
 INTERVAL = 300  # 5 minutes in seconds
 DB_FILE = 'weather_data.db'
 ALERT_TEMP_THRESHOLD = 35  # Example threshold for temperature
+ALERT_CONSECUTIVE_COUNT = 2  # Number of consecutive breaches to trigger an alert
+
+# Email configuration
+SMTP_SERVER = 'smtp.example.com'
+SMTP_PORT = 587
+SMTP_USER = 'your_email@example.com'
+SMTP_PASSWORD = 'your_password'
+ALERT_EMAIL = 'alert_recipient@example.com'
 
 def fetch_weather_data(city):
     params = {
@@ -69,7 +80,7 @@ def compute_daily_summary():
     # Process and print summaries
     for summary in summaries:
         print(f"City: {summary[0]}, Date: {summary[1]}, Avg Temp: {summary[2]}, Max Temp: {summary[3]}, Min Temp: {summary[4]}, Dominant Weather: {summary[5]}")
-        
+
 def check_alerts():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -78,13 +89,40 @@ def check_alerts():
         SELECT city, temp 
         FROM weather 
         WHERE temp > ?
+        AND dt > strftime('%s', 'now', '-10 minutes')
     ''', (ALERT_TEMP_THRESHOLD,))
     
     alerts = cursor.fetchall()
     conn.close()
+
+    # Track consecutive breaches for alerting
+    breaches = {city: 0 for city in CITIES}
+    for city, temp in alerts:
+        breaches[city] += 1
+        if breaches[city] >= ALERT_CONSECUTIVE_COUNT:
+            send_email_alert(city, temp)
+            breaches[city] = 0  # Reset after sending alert
+
+def send_email_alert(city, temp):
+    subject = f"Temperature Alert for {city}"
+    body = f"The temperature in {city} has exceeded the threshold with a current temperature of {temp}°C."
     
-    for alert in alerts:
-        print(f"ALERT: {alert[0]} has exceeded the temperature threshold with {alert[1]}°C")
+    msg = MIMEMultipart()
+    msg['From'] = SMTP_USER
+    msg['To'] = ALERT_EMAIL
+    msg['Subject'] = subject
+    
+    msg.attach(MIMEText(body, 'plain'))
+    
+    try:
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        print(f"Alert email sent for {city}!")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
 
 def visualize_data():
     conn = sqlite3.connect(DB_FILE)
