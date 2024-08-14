@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  weather_monitor:
+    build: .
+    container_name: weather_monitor
+    environment:
+      - API_KEY=812bb6e9e3673035e486c96700d41b36
+    volumes:
+      - .:/app
+    restart: always
